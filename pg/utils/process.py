@@ -59,6 +59,7 @@ def calculate_close_ratio(pseudo_time_series, data_folda):
 
     # tqdm で進行状況を表示
     for d in tqdm(range(3,len(eval_period))):
+    #for d in tqdm(range(4,10)):
         for g in genre_list:
             # base_data の3ヶ月前のデータで、eval_period がTrueのidを取得
             num_3months_ago = pseudo_time_series[(pseudo_time_series['base_date'] == eval_period[d-3])
@@ -71,13 +72,13 @@ def calculate_close_ratio(pseudo_time_series, data_folda):
                                                 &(pseudo_time_series['eval_period'] == True))]
             
             try:
-                ratio=len(num_this_month)/len(num_3months_ago)
+                ratio=1-len(num_this_month)/len(num_3months_ago)
             except ZeroDivisionError:
                 ratio=np.nan
                 
-            close_ratios.append([eval_period[d],g,ratio])
+            close_ratios=pd.concat([close_ratios,pd.DataFrame([[eval_period[d],g,ratio]])])
     
-    close_ratios.rename(columns={0:"base_date",1:"genre_first_name",2:"close_ratio"},inplace=True)
+    close_ratios.rename(columns={0:"base_date",1:"genre_first_name",2:"close_ratio_genre"},inplace=True)
 
     return close_ratios
 
@@ -106,7 +107,7 @@ def add_v_google(pseudo_time_series, data_folda, add_list, master_name="V_GOOGLE
     
     return pseudo_time_series
 
-def add_v_retty(pseudo_time_series, data_folda, add_list, master_name="V_RETTY",read_from_=False):
+def add_v_retty(pseudo_time_series, data_folda, add_list, master_name="V_RETTY",read_from_snowflake=False):
 
     pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_snowflake,col="*")
 
@@ -138,6 +139,7 @@ def add_v_retty(pseudo_time_series, data_folda, add_list, master_name="V_RETTY",
     pd_sf["infos.updateInfo.firstReviewDate"]=pd_sf["infos.updateInfo.firstReviewDate"].replace("",np.nan)
     pd_sf["infos.updateInfo.firstReviewDate"]=pd.to_datetime(pd_sf["infos.updateInfo.firstReviewDate"],format="%Y年%m月%d日")
 
+    # genge
 
     # pd_sf["infos.wantToGo"]の空文字をNaNに変換後、floatに変換
     pd_sf["infos.wantToGo"]=pd_sf["infos.wantToGo"].replace("",np.nan).astype(float)
