@@ -38,6 +38,15 @@ def add_master_data(pseudo_time_series, data_folda, master_name="restaurant_data
     
     return pseudo_time_series
 
+# 同じrestaurant_idで複数のデータがある場合、最もランクが低いものを選択する
+def select_general_rank(pd_sf):
+    pd_sf["general_rank_num"]=pd_sf["general_rank"].map({"S":1,"A":2,"B":3,"L":4,"F":5})
+    # 同じrestaurant_idで複数のデータがある場合、最もランクが低いものを選択
+    pd_sf=pd_sf.sort_values(by=["restaurant_id","general_rank_num"],ascending=True)
+    pd_sf=pd_sf.drop_duplicates(subset="restaurant_id",keep="first")
+    pd_sf.drop(columns=["general_rank_num"],inplace=True)
+
+    return pd_sf
 
 def add_v_google(pseudo_time_series, data_folda, add_list, master_name="V_GOOGLE"):
 
@@ -46,21 +55,22 @@ def add_v_google(pseudo_time_series, data_folda, add_list, master_name="V_GOOGLE
     # general rank を与える
     ranker=rank.Ranker()
     pd_sf=ranker.add_general_rank(pd_sf)
-
-
+    pd_sf=select_general_rank(pd_sf)
+    
     pseudo_time_series=pd.merge(pseudo_time_series,pd_sf[add_list],on="restaurant_id",how="left")
     pseudo_time_series.rename(columns={"general_rank":"general_rank_GOOGLE"},inplace=True)
     
+    
     return pseudo_time_series
 
-def add_v_retty(pseudo_time_series, data_folda, add_list, master_name="V_RETTY",read_from_pickle=False):
+def add_v_retty(pseudo_time_series, data_folda, add_list, master_name="V_RETTY",read_from_=False):
 
-    pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_pickle,col="*")
+    pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_snowflake,col="*")
 
     # general rank を与える
     ranker=rank.Ranker()
     pd_sf=ranker.add_general_rank(pd_sf)
-
+    pd_sf=select_general_rank(pd_sf)
     pd_sf.rename(columns={"general_rank":"general_rank_RETTY"},inplace=True)
 
     # info.isOfficial の空文字を0, trueを1に変換
@@ -68,8 +78,13 @@ def add_v_retty(pseudo_time_series, data_folda, add_list, master_name="V_RETTY",
 
     # infos.onlineReservation falseを0, trueを1に変換
     pd_sf["infos.onlineReservation"]=pd_sf["infos.onlineReservation"].replace({"false":0,"true":1}).astype(int)
+    #infos.onlineReservationをinfos.onlineReservation_RETTYに変更
+    pd_sf.rename(columns={"infos.onlineReservation":"infos.onlineReservation_RETTY"},inplace=True)
     # infos.access.transferTime1 徒歩X分のXを取り出す。intに変換
     pd_sf["infos.access.transferTime1"]=pd_sf["infos.access.transferTime1"].str.extract("(\d+)").astype(float)
+    pd_sf["infos.access.transferTime2"]=pd_sf["infos.access.transferTime2"].str.extract("(\d+)").astype(float)
+    pd_sf["infos.access.transferTime3"]=pd_sf["infos.access.transferTime3"].str.extract("(\d+)").astype(float)
+
     # infos.numberOfSeats.valueの "席"を取り除く
     pd_sf["infos.numberOfSeats.value"]=pd_sf["infos.numberOfSeats.value"].str.replace("席","")
     #空文字はNaNに変換にしてfloatに変換
@@ -92,7 +107,7 @@ def add_v_retty(pseudo_time_series, data_folda, add_list, master_name="V_RETTY",
     pd_sf["infos.excellent"]=pd_sf["infos.excellent"].replace("",np.nan).astype(float)
     pd_sf[["infos.good","infos.average"]]=pd_sf[["infos.good","infos.average"]].replace("",np.nan).astype(float)
 
-    # infos.onlineReservation falseを0, trueを1に変換
+    # infos.coupon: falseを0, trueを1に変換
     pd_sf["infos.coupon"]=pd_sf["infos.coupon"].replace({"false":0,"true":1}).astype(int)
 
     # float_listをfloatに変換
@@ -110,13 +125,13 @@ def add_v_retty(pseudo_time_series, data_folda, add_list, master_name="V_RETTY",
     return pseudo_time_series
 
 
-def add_v_hotpepper(pseudo_time_series, data_folda, add_list, master_name="V_HOTPEPPER",read_from_pickle=False):
-    pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_pickle,col="*")
+def add_v_hotpepper(pseudo_time_series, data_folda, add_list, master_name="V_HOTPEPPER",read_from_snowflake=False):
+    pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_snowflake,col="*")
 
     # general rank を与える
     ranker=rank.Ranker()
     pd_sf=ranker.add_general_rank(pd_sf)
-
+    pd_sf=select_general_rank(pd_sf)
     pd_sf.rename(columns={"general_rank":"general_rank_HOTPEPPER"},inplace=True)
     
     # info.isOfficial の空文字を0, trueを1に変換
@@ -126,6 +141,12 @@ def add_v_hotpepper(pseudo_time_series, data_folda, add_list, master_name="V_HOT
     pd_sf['infos.ratingReview']=pd_sf['infos.ratingReview'].astype(float)
     pd_sf['infos.satisfaction.percentage1'].replace('',np.nan,inplace=True)
     pd_sf['infos.satisfaction.percentage1']=pd_sf['infos.satisfaction.percentage1'].astype(float)
+    pd_sf['infos.satisfaction.percentage2'].replace('',np.nan,inplace=True)
+    pd_sf['infos.satisfaction.percentage2']=pd_sf['infos.satisfaction.percentage2'].astype(float)
+    pd_sf['infos.satisfaction.percentage3'].replace('',np.nan,inplace=True)
+    pd_sf['infos.satisfaction.percentage3']=pd_sf['infos.satisfaction.percentage3'].astype(float)
+
+    pd_sf.rename(columns={"infos.onlineReservation":"infos.onlineReservation_HOTPEPPER"},inplace=True)
 
     hotpepper_list=['infos.fanCount','infos.reviewTags.count1','infos.reviewTags.count2','infos.reviewTags.count3', 'infos.reviewTags.count4',
        'infos.reviewTags.count5', 'infos.reviewTags.count6','infos.reviewTags.count7', 'infos.reviewTags.count8','infos.reviewTags.count9']
@@ -139,6 +160,107 @@ def add_v_hotpepper(pseudo_time_series, data_folda, add_list, master_name="V_HOT
     pseudo_time_series=pd.merge(pseudo_time_series,pd_sf[add_list],on="restaurant_id",how="left")
     
     return pseudo_time_series
+    
+def add_v_structured(pseudo_time_series, data_folda, add_list, master_name="V_STRUCTURED",read_from_snowflake=False):
+       
+    pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_snowflake,col=add_list)
+    
+    # pd_sf で 各rank が空のものを除外
+    pd_sf=pd_sf[pd_sf["name_rank"].isnull()==False]
+    pd_sf=pd_sf[pd_sf["address_rank"].isnull()==False]
+    pd_sf=pd_sf[pd_sf["telephone_rank"].isnull()==False]
+    
+    # general rank を与える
+    ranker=rank.Ranker()
+    pd_sf=ranker.add_general_rank(pd_sf)
+    pd_sf=select_general_rank(pd_sf)
+    pd_sf.rename(columns={"general_rank":"general_rank_STRUCTURED"},inplace=True)
+    
+    pd_sf.drop(columns=["name_rank","address_rank","telephone_rank"],inplace=True)
+    
+    V_MEDIA_SITE_LIST = read_table(data_folda,table_name="V_MEDIA_SITE_LIST",columns="all",read_snowflake=True,col='"name","hostname"')
+    pd_sf["hostname"]=""
+    
+    
+    for i in range(0,len(V_MEDIA_SITE_LIST)):
+        print(V_MEDIA_SITE_LIST["hostname"].values[i])
+        ### V_MEDIA_SITE_LIST["name"].values[i]　が　pd_sf["hostname"]に含まれている場合、pd_sf["hostname2"]にV_MEDIA_SITE_LIST["name"].values[i]を代入 
+        pd_sf.loc[pd_sf["url"].str.contains(V_MEDIA_SITE_LIST["hostname"].values[i]),"hostname"] = V_MEDIA_SITE_LIST["name"].values[i]
+        
+    # 食べログのみを抽出
+    pd_sf=pd_sf[pd_sf["hostname"]=="食べログ"]    
+
+    #pseudo_time_series , pseudo_time_series_test に pd_sf を結合
+    pseudo_time_series = pd.merge(pseudo_time_series,pd_sf,on="restaurant_id",how="left")
+    
+    return pseudo_time_series
+
+
+def add_v_tripadvisor(pseudo_time_series, data_folda, add_list, master_name="V_TRIPADVISOR",read_from_snowflake=False):
+    pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_snowflake,col="*")
+
+    # general rank を与える
+    ranker=rank.Ranker()
+    pd_sf=ranker.add_general_rank(pd_sf)
+    pd_sf=select_general_rank(pd_sf)
+    pd_sf.rename(columns={"general_rank":"general_rank_TRIPADVISOR"},inplace=True)
+
+    pd_sf.rename(columns={"infos.aggregateRating":"infos.aggregateRating_TRIPADVISOR"},inplace=True)
+    #add_list=["restaurant_id","infos.aggregateRating_TRIPADVISOR","infos.ratingDetails.Meal","infos.ratingDetails.Service","infos.ratingDetails.Price","infos.ratingDetails.Ambience","infos.reviewCount","infos.qa_count"]
+    
+    pseudo_time_series=pd.merge(pseudo_time_series,pd_sf[add_list],on="restaurant_id",how="left")
+    
+    return pseudo_time_series
+
+def add_v_hitosara(pseudo_time_series, data_folda, add_list, master_name="V_HITOSARA",read_from_snowflake=False):
+    pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_snowflake,col="*")
+
+    # general rank を与える
+    ranker=rank.Ranker()
+    pd_sf=ranker.add_general_rank(pd_sf)
+    pd_sf=select_general_rank(pd_sf)
+    pd_sf.rename(columns={"general_rank":"general_rank_HITOSARA"},inplace=True)
+
+    #"infos.premium","infps.premium" の True, False を 1, 0 に変換
+    pd_sf["infos.premium"]=pd_sf["infos.premium"].replace('',np.nan).replace({"true":1,"false":0}).astype(int)
+    pd_sf["infos.onlineReservation"]=pd_sf["infos.onlineReservation"].replace('',np.nan).replace({"true":1,"false":0}).astype(int)
+
+    pd_sf.rename(columns={"infos.onlineReservation":"infos.onlineReservation_HITOSARA"},inplace=True)
+
+
+    
+    pseudo_time_series=pd.merge(pseudo_time_series,pd_sf[add_list],on="restaurant_id",how="left")
+    
+    return pseudo_time_series
+
+
+def fix_structured_data(pseudo_time_series_train):
+    # GOOGLE
+    float_list=["aggregateRating.ratingCount","aggregateRating.ratingValue", "aggregateRating.reviewCount", 
+       "aggregateRating.bestRating", "aggregateRating.worstRating",  
+       "interactionCount.went", 
+       "interactionCount.wanttogo","paymentAccepted",
+       # TRIPADVISOR
+       "infos.aggregateRating_TRIPADVISOR","infos.ratingDetails.Meal","infos.ratingDetails.Service",
+       "infos.ratingDetails.Price","infos.ratingDetails.Ambience","infos.reviewCount","infos.qa_count"]
+
+    remove_list=["price","priceRange","servesCuisine","ReserveAction.result.name", "OrderAction.target.actionPlatform", 
+        "OrderAction.target.inLanguage", "OrderAction.target.urlTemplate"]
+
+    true_flag_list=["acceptsReservations"]
+
+    pseudo_time_series_train[float_list]=pseudo_time_series_train[float_list].replace('',np.nan).astype(float)
+
+    #acceptsReservationsはTrueか否かで分ける
+    pseudo_time_series_train.loc[pseudo_time_series_train["acceptsReservations"]=="True","acceptsReservations"]=1
+    pseudo_time_series_train.loc[pseudo_time_series_train["acceptsReservations"]!="True","acceptsReservations"]=0
+
+    pseudo_time_series_train["acceptsReservations"]=pseudo_time_series_train["acceptsReservations"].astype(int)
+
+    pseudo_time_series_train.drop(remove_list,axis=1,inplace=True)
+    
+    return pseudo_time_series_train
+
 
 def make_train_data(augumented_data, base_month, explain_columns, target_column,  data_folda, genre_list, read_from_pickle=False):
     
@@ -154,12 +276,19 @@ def make_train_data(augumented_data, base_month, explain_columns, target_column,
         #genre_listでgenre_first_nameをダミー変数化。
         #genre_first_nameのみ、genre_second_name,genre_third_name はどうするか。
         
-        glist = [pd.DataFrame() for i in range(len(genre_list))]       
+        glist1 = [pd.DataFrame() for i in range(len(genre_list))]       
+        glist2 = [pd.DataFrame() for i in range(len(genre_list))]       
+        glist3 = [pd.DataFrame() for i in range(len(genre_list))]       
+
         # 進行状況を表示
         for i in tqdm(range(len(genre_list))):
-            glist[i]=augumented_data_train["genre_first_name"].str.contains(genre_list[i]).astype(int)
+            glist1[i]=augumented_data_train["genre_first_name"].str.contains(genre_list[i]).replace('',0).astype(int)
+            glist2[i]=augumented_data_train["genre_second_name"].str.contains(genre_list[i]).replace('',np.nan).astype(float)
+            glist3[i]=augumented_data_train["genre_third_name"].str.contains(genre_list[i]).replace('',np.nan).astype(float)
 
-        augumented_data_train=pd.concat([augumented_data_train]+glist,axis=1)
+        # glist1, gliist2, glist3 を足し算
+        #glist=[glist1[i]+glist2[i]+glist3[i] for i in range(len(genre_list))]
+        augumented_data_train=pd.concat([augumented_data_train]+glist1,axis=1)
         
         augumented_data_train.columns=explain_columns+[target_column]+["genre_"+g for g in genre_list]
         
@@ -200,37 +329,6 @@ def make_train_data(augumented_data, base_month, explain_columns, target_column,
     
     return augumented_data_train
 
-price_list=['～￥999',
- '￥1,000～￥1,999',
- '￥2,000～￥2,999',
- '￥3,000～￥3,999',
- '￥4,000～￥4,999',
- '￥5,000～￥5,999',
- '￥6,000～￥7,999',
- '￥8,000～￥9,999',
- '￥10,000～￥14,999',
- '￥15,000～￥19,999',
- '￥20,000～￥29,999',
- '￥30,000～￥39,999',
- '￥40,000～￥49,999',
- '￥50,000～￥59,999',
- '￥60,000～￥79,999',
- '￥80,000～￥99,999',
- '￥100,000～']
-
-def get_price_range_dummy(tabelog,column_name):
-    
-    tabelog[column_name+"_num"]=tabelog[column_name]
-    
-    for p in range(len(price_list)):
-        print(price_list[p])
-        # tabelog[column_name]について、price_list[p]をstr(p)に置換する
-        tabelog[column_name+"_num"]=tabelog[column_name+"_num"].str.replace(price_list[p],str(p))
-        
-        #tabelog[column_name+"_num"]=tabelog[column_name].str.replace(price_list[p],p)
-        
-    return tabelog
-
 
 def extract_features(data_folda,fname,explain_columns,target_column):
     pseudo_time_series_with = pd.read_pickle(data_folda+fname)
@@ -260,70 +358,14 @@ def compare_test_train_dist(data_folda,train='pseudo_time_series_with_v_hotpeppe
     train_test["test_ratio_over_train_ratio"]=train_test["test_ratio"]/train_test["train_ratio"]
     
     return train_test
-    
-    
-def add_v_structured(pseudo_time_series, data_folda, add_list, master_name="V_STRUCTURED",read_from_pickle=False):
-       
-    pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_pickle,col=add_list)
-    
-    # pd_sf で 各rank が空のものを除外
-    pd_sf=pd_sf[pd_sf["name_rank"].isnull()==False]
-    pd_sf=pd_sf[pd_sf["address_rank"].isnull()==False]
-    pd_sf=pd_sf[pd_sf["telephone_rank"].isnull()==False]
-    
-    # general rank を与える
-    ranker=rank.Ranker()
-    pd_sf=ranker.add_general_rank(pd_sf)
 
-    pd_sf.rename(columns={"general_rank":"general_rank_STRUCTURED"},inplace=True)
-    
-    pd_sf.drop(columns=["name_rank","address_rank","telephone_rank"],inplace=True)
-    
-    V_MEDIA_SITE_LIST = read_table(data_folda,table_name="V_MEDIA_SITE_LIST",columns="all",read_snowflake=True,col='"name","hostname"')
-    pd_sf["hostname"]=""
-    
-    
-    for i in range(0,len(V_MEDIA_SITE_LIST)):
-        print(V_MEDIA_SITE_LIST["hostname"].values[i])
-        ### V_MEDIA_SITE_LIST["name"].values[i]　が　pd_sf["hostname"]に含まれている場合、pd_sf["hostname2"]にV_MEDIA_SITE_LIST["name"].values[i]を代入 
-        pd_sf.loc[pd_sf["url"].str.contains(V_MEDIA_SITE_LIST["hostname"].values[i]),"hostname"] = V_MEDIA_SITE_LIST["name"].values[i]
-        
-    # 食べログのみを抽出
-    pd_sf=pd_sf[pd_sf["hostname"]=="食べログ"]
-    
-    
-    # general rankを general_rank_num に変更。S=1, A=2, B=3, L=4, F=5
-    pd_sf["general_rank_num"]=pd_sf["general_rank_STRUCTURED"].map({"S":1,"A":2,"B":3,"L":4,"F":5})
-    # 同じrestaurant_idで複数のデータがある場合、最もランクが低いものを選択
-    pd_sf=pd_sf.sort_values(by=["restaurant_id","general_rank_num"],ascending=True)
-    pd_sf=pd_sf.drop_duplicates(subset="restaurant_id",keep="first")
-    pd_sf.drop(columns=["url"],inplace=True)
 
-    #pseudo_time_series , pseudo_time_series_test に pd_sf を結合
-    pseudo_time_series = pd.merge(pseudo_time_series,pd_sf,on="restaurant_id",how="left")
+# longgitude, latitude を含まない、float型の変数をfloat16に変換
+def reduce_mem_usage(pseudo_time_series):
+    pseudo_time_series_float = pseudo_time_series.select_dtypes(include=['float'])
+    # longitude, latitude を含まないカラムに限定
+    pseudo_time_series_float = pseudo_time_series_float.drop(columns=['northlatitude','eastlongitude'])
     
+    pseudo_time_series_float16 = pseudo_time_series_float.apply(pd.to_numeric,downcast='float')
+    pseudo_time_series[pseudo_time_series_float16.columns] = pseudo_time_series_float16
     return pseudo_time_series
-
-
-def fix_structured_data(pseudo_time_series_train):
-    float_list=["aggregateRating.ratingCount","aggregateRating.ratingValue", "aggregateRating.reviewCount", 
-       "aggregateRating.bestRating", "aggregateRating.worstRating",  
-       "interactionCount.went", 
-       "interactionCount.wanttogo","paymentAccepted"]
-
-    remove_list=["price","priceRange","servesCuisine","ReserveAction.result.name", "OrderAction.target.actionPlatform", 
-        "OrderAction.target.inLanguage", "OrderAction.target.urlTemplate",]
-
-    true_flag_list=["acceptsReservations"]
-
-    pseudo_time_series_train[float_list]=pseudo_time_series_train[float_list].replace('',np.nan).astype(float)
-
-    #acceptsReservationsはTrueか否かで分ける
-    pseudo_time_series_train.loc[pseudo_time_series_train["acceptsReservations"]=="True","acceptsReservations"]=1
-    pseudo_time_series_train.loc[pseudo_time_series_train["acceptsReservations"]!="True","acceptsReservations"]=0
-
-    pseudo_time_series_train["acceptsReservations"]=pseudo_time_series_train["acceptsReservations"].astype(int)
-
-    pseudo_time_series_train.drop(remove_list,axis=1,inplace=True)
-    
-    return pseudo_time_series_train
