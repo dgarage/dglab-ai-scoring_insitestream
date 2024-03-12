@@ -6,37 +6,80 @@ import rank
 from process import * 
 from utils import *
 
-def add_master_data(pseudo_time_series, data_folda, master_name="restaurant_data.csv"):
+def make_genre_list(pseudo_time_series):
+    genre0=pseudo_time_series["genre_first_name"].unique()
+    genre1=pseudo_time_series["genre_second_name"].unique()
+    genre2=pseudo_time_series["genre_third_name"].unique()
+
+    genre_list = list(set(list(genre0)+list(genre1)+list(genre2)))
+    genre_list = pd.Series(genre_list)
+    
+    return genre_list
+
+def add_master_data(pseudo_time_series, data_folda, add_list, master_name="restaurant_data.csv"):
 
     tabelog = pd.read_csv(data_folda+master_name)
-
-    ### master data から加えるデータを定義
-    add_list=['name',"prefecture_name",'head_branch','opened_on', 'created_at','genre_first_name', 
-              'genre_second_name','genre_third_name','northlatitude', 'eastlongitude',
-              "net_reservation_flg",'price_range_lunch_owner','price_range_dinner_owner', 
-              'price_range_lunch_user','price_range_dinner_user']
-
-    # カウント系のカラムを追加
-    count_columns=tabelog.columns[tabelog.columns.str.contains('count')].tolist()
-
-    add_list+=count_columns
     
     pseudo_time_series=pd.merge(pseudo_time_series, tabelog[["id"]+add_list], left_on="original_id",right_on='id', how='left')
 
-    # 営業日の計算。* 本来は opened_date と created at の古い方を採用したいが、opened_date が古すぎて datetime型に変換出来ないので、created at のみで対応。     
+    # 営業日の計算
+    # opened_on が古すぎて、datetime型に変換出来ないので、あらかじめ処理を行う
+    pseudo_time_series.loc[pseudo_time_series['opened_on'] > f'{pd.Timestamp.max:%Y%M%d}', 'opened_on'] = f'{pd.Timestamp.max:%Y%M%d}'
+    pseudo_time_series.loc[pseudo_time_series['opened_on'] < f'{pd.Timestamp.min:%Y%M%d}', 'opened_on'] = f'{pd.Timestamp.min:%Y%M%d}'
+    pseudo_time_series['opened_on']=pd.to_datetime(pseudo_time_series['opened_on'], errors='coerce')
+                        
+    # opened_on が存在する場合、real_opened_date を opened_on で上書き 
     pseudo_time_series["real_opened_date"]=pd.to_datetime(pseudo_time_series["created_at"])
+    pseudo_time_series.loc[pseudo_time_series["opened_on"].notnull(),"real_opened_date"]=pd.to_datetime(pseudo_time_series["opened_on"])    
 
-    # "created_at" と base_date の差分を計算
-    pseudo_time_series["openning_days"] = pd.to_datetime(pseudo_time_series["base_date"])-pd.to_datetime(pseudo_time_series["real_opened_date"], errors='coerce')
 
-    """
-    # price range をダミー化
-    p_list=['price_range_lunch_by_owner','price_range_dinner_by_owner', 'price_range_lunch_by_review','price_range_dinner_by_review']
-    for p in p_list:
-        pseudo_time_series=get_price_range_dummy(pseudo_time_series,p)
-    """
-    
+    pseudo_time_series['base_date'] = pd.to_datetime(pseudo_time_series['base_date'])
+    pseudo_time_series['openning_days'] = pseudo_time_series.apply(lambda e: (e['base_date'].to_pydatetime() - e['real_opened_date'].to_pydatetime()).days, axis=1)
+
+    # 最終来訪月からの経過日数を計算
+    pseudo_time_series['max_visit_month']=pd.to_datetime(pseudo_time_series['max_visit_month'])
+    pseudo_time_series['days_from_lastvisit'] = pseudo_time_series.apply(lambda e: (e['base_date'].to_pydatetime() - e['max_visit_month'].to_pydatetime()).days, axis=1)
+    # マイナスの場合は、0にする
+    pseudo_time_series['days_from_lastvisit']=pseudo_time_series['days_from_lastvisit'].apply(lambda x: max(x,0))
+
+    pseudo_time_series.drop(columns=["max_visit_month"],inplace=True)
+
+
     return pseudo_time_series
+
+def calculate_close_ratio(pseudo_time_series, data_folda):
+    #将来ジャンルが変わってモデルの構成が変わる可能性があるため、ジャンルをリストで保持して読み込む
+    #genre_list = make_genre_list(pseudo_time_series)
+    genre_list = pd.read_pickle(data_folda+'genre_list.pkl')
+    
+    close_ratios=pd.DataFrame()
+    eval_period=pd.date_range('2022-09-01', '2023-12-01', freq='MS')
+    #eval_period から一日前の日付を取得
+    eval_period=eval_period - pd.Timedelta(days=1)
+
+    # tqdm で進行状況を表示
+    for d in tqdm(range(3,len(eval_period))):
+        for g in genre_list:
+            # base_data の3ヶ月前のデータで、eval_period がTrueのidを取得
+            num_3months_ago = pseudo_time_series[(pseudo_time_series['base_date'] == eval_period[d-3])
+                                                 &(pseudo_time_series['genre_first_name'] == g)
+                                                 &(pseudo_time_series['eval_period'] == True)]
+            
+            id_3months_ago = num_3months_ago['id'].values
+            num_this_month = pseudo_time_series[(pseudo_time_series['base_date'] == eval_period[d])
+                                                &(pseudo_time_series['id'].isin(id_3months_ago)
+                                                &(pseudo_time_series['eval_period'] == True))]
+            
+            try:
+                ratio=len(num_this_month)/len(num_3months_ago)
+            except ZeroDivisionError:
+                ratio=np.nan
+                
+            close_ratios.append([eval_period[d],g,ratio])
+    
+    close_ratios.rename(columns={0:"base_date",1:"genre_first_name",2:"close_ratio"},inplace=True)
+
+    return close_ratios
 
 # 同じrestaurant_idで複数のデータがある場合、最もランクが低いものを選択する
 def select_general_rank(pd_sf):
