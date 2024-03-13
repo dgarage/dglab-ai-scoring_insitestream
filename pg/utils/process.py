@@ -200,11 +200,23 @@ def add_v_hotpepper(pseudo_time_series, data_folda, add_list, master_name="V_HOT
         pd_sf[h]=pd_sf[h].astype(float)
         pd_sf[h].value_counts()
 
+
+    # 'infos.onlineReservation_HOTPEPPER','infos.ownerRegistration','infos.ticket' を category に変換
+    pd_sf['infos.onlineReservation_HOTPEPPER']=pd_sf['infos.onlineReservation_HOTPEPPER'].astype('category')
+    pd_sf['infos.ownerRegistration']=pd_sf['infos.ownerRegistration'].astype('category')
+    pd_sf['infos.ticket']=pd_sf['infos.ticket'].astype('category')
+
     add_list=["general_rank_HOTPEPPER"]+add_list+hotpepper_list
     
-    pseudo_time_series=pd.merge(pseudo_time_series,pd_sf[add_list],on="restaurant_id",how="left")
+    #pseudo_time_series=pd.merge(pseudo_time_series,pd_sf[add_list],on="restaurant_id",how="left")
     
-    return pseudo_time_series
+    pseudo_time_series_drop_dum=pseudo_time_series#.drop_duplicates(subset=["restaurant_id"])
+    pd_sf_drop_dum=pd_sf#.drop_duplicates(subset=["restaurant_id"])
+    pd_sf_drop_dum=pd_sf_drop_dum[add_list]
+
+    temp=pd.merge(pseudo_time_series_drop_dum,pd_sf_drop_dum,on="restaurant_id",how="left")
+
+    return temp
     
 def add_v_structured(pseudo_time_series, data_folda, add_list, master_name="V_STRUCTURED",read_from_snowflake=False):
        
@@ -252,10 +264,17 @@ def add_v_tripadvisor(pseudo_time_series, data_folda, add_list, master_name="V_T
 
     pd_sf.rename(columns={"infos.aggregateRating":"infos.aggregateRating_TRIPADVISOR"},inplace=True)
     #add_list=["restaurant_id","infos.aggregateRating_TRIPADVISOR","infos.ratingDetails.Meal","infos.ratingDetails.Service","infos.ratingDetails.Price","infos.ratingDetails.Ambience","infos.reviewCount","infos.qa_count"]
+
+    pseudo_time_series_drop_dum=pseudo_time_series#.drop_duplicates(subset=["restaurant_id"])
+    pd_sf_drop_dum=pd_sf#.drop_duplicates(subset=["restaurant_id"])
+    pd_sf_drop_dum=pd_sf_drop_dum[add_list]
+
+    # oficial_info_flg を categorical に変換
+    #pd_sf_drop_dum["infos.official_info_flg"]=pd_sf_drop_dum["infos.official_info_flg"].astype("category")
+
+    temp=pd.merge(pseudo_time_series_drop_dum,pd_sf_drop_dum,on="restaurant_id",how="left")
     
-    pseudo_time_series=pd.merge(pseudo_time_series,pd_sf[add_list],on="restaurant_id",how="left")
-    
-    return pseudo_time_series
+    return temp
 
 def add_v_hitosara(pseudo_time_series, data_folda, add_list, master_name="V_HITOSARA",read_from_snowflake=False):
     pd_sf = read_table(data_folda,master_name,columns="all",read_snowflake=read_from_snowflake,col="*")
@@ -286,8 +305,7 @@ def fix_structured_data(pseudo_time_series_train):
        "interactionCount.went", 
        "interactionCount.wanttogo","paymentAccepted",
        # TRIPADVISOR
-       "infos.aggregateRating_TRIPADVISOR","infos.ratingDetails.Meal","infos.ratingDetails.Service",
-       "infos.ratingDetails.Price","infos.ratingDetails.Ambience","infos.reviewCount","infos.qa_count"]
+       "infos.aggregateRating_TRIPADVISOR","infos.reviewCount","infos.qa_count"]
 
     remove_list=["price","priceRange","servesCuisine","ReserveAction.result.name", "OrderAction.target.actionPlatform", 
         "OrderAction.target.inLanguage", "OrderAction.target.urlTemplate"]
@@ -413,4 +431,9 @@ def reduce_mem_usage(pseudo_time_series):
     
     pseudo_time_series_float16 = pseudo_time_series_float.apply(pd.to_numeric,downcast='float')
     pseudo_time_series[pseudo_time_series_float16.columns] = pseudo_time_series_float16
+    
+    pseudo_time_series_int = pseudo_time_series.select_dtypes(include=['int'])
+    pseudo_time_series_int16 = pseudo_time_series_int.apply(pd.to_numeric,downcast='integer')
+    pseudo_time_series[pseudo_time_series_int16.columns] = pseudo_time_series_int16
+    
     return pseudo_time_series
