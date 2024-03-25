@@ -22,6 +22,8 @@ station=pd.read_csv(data_folda+"/station_address/station20240318free.csv")
 # 同じ station_cd の数をカウントして、付与する
 staion_cd_count=station.groupby('station_g_cd').size().reset_index(name='count').sort_values('count', ascending=False)
 station=pd.merge(station,staion_cd_count, on='station_g_cd', how='left')
+
+
 pseudo_time_series = pd.read_pickle(data_folda+'train_with_master.pkl')
 pseudo_time_series_unique_rest=pseudo_time_series.drop_duplicates(subset=['restaurant_id'])
 
@@ -41,9 +43,10 @@ station.to_pickle(data_folda+'station_address_jp_axis.pkl')
 station = pd.read_pickle(data_folda+'station_address_jp_axis.pkl')
 
 # pseudo_time_series_unique_rest の rat_lon と station の lat_lon の距離を計算
-# 計算負荷を減らすために、seudo_time_series_unique_rest に対し、±0.1度以内の station のみを抽出して距離を計算する
+# 計算負荷を減らすために、seudo_time_series_unique_rest に対し、±0.05度以内の station のみを抽出して距離を計算する
 # 0.1度はおおよそ11km
 # 0.05度はおおよそ5.5km
+# 0.01度はおおよそ1.1km
 
 def get_near_stations(lat_lon, distance=0.05):
     near_stations = []
